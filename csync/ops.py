@@ -106,10 +106,14 @@ def do_sync(paths: Paths, dry_run: bool = False, current_session: Optional[str] 
 			background: bool = False) -> List[Report]:
 	def go():
 		update_status(paths, last_push_attempt=now())
-		reports = engine(paths, background=background).sync(dry_run=dry_run, current_session=current_session, prefer_remote=prefer_remote,
-									 allow_deletions=allow_deletions)
+		eng = engine(paths, background=background)
+		reports = eng.sync(dry_run=dry_run, current_session=current_session, prefer_remote=prefer_remote,
+						   allow_deletions=allow_deletions)
 		if not dry_run:
 			update_status(paths, last_pull=now(), last_push=now())
+			if eng.config.get("files_enabled"):
+				from .files import ensure_after_sync
+				ensure_after_sync(paths, eng.config, eng.store.other_profiles())
 		return reports
 	return run_locked(paths, "sync", go, lock_timeout)
 
@@ -166,3 +170,21 @@ def do_forget_machine(paths: Paths, ident: str, lock_timeout: float = 30.0, forc
 def repo_size_mb(paths: Paths) -> float:
 	from .store import Store
 	return Store(paths.repo_dir, None, "").size_mb()
+
+
+def do_move(paths: Paths, old: str, new: str, lock_timeout: float = 30.0) -> Dict[str, Any]:
+	"""Déplace un dossier de travail et ses conversations, puis l'annonce aux autres machines."""
+	from .move import move_folder
+
+	def go():
+		eng = engine(paths)
+		# D'abord à jour : rien de ce que l'autre machine a ajouté ne doit rester sous l'ancien chemin.
+		eng.sync()
+		result = move_folder(eng, old, new)
+		eng.state.save(paths)
+		eng.refresh_profile(full=False)
+		report = eng.push()
+		update_status(paths, last_push=now())
+		result["report"] = report
+		return result
+	return run_locked(paths, "move", go, lock_timeout)

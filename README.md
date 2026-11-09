@@ -7,13 +7,14 @@ Synchronise Claude Code entre plusieurs machines (un Mac et un serveur Linux) vi
 - **Les conversations de Claude Code** (`~/.claude/projects/`), y compris les sous-agents et la mémoire automatique des projets. Une conversation commencée sur une machine se reprend sur l'autre avec `claude --resume`.
 - **La configuration** : `CLAUDE.md`, `settings.json`, `keybindings.json`, les dossiers `skills/`, `agents/`, `commands/`, `output-styles/`, `rules/`, `workflows/`, `themes/`, `agent-memory/`, `hooks/`, ainsi que les fichiers de `~/.claude` que `settings.json` mentionne (script de la barre d'état, par exemple). Les fichiers de fonctionnement que des scripts écrivent parfois dans ces dossiers (journaux `.log`, bases `.db`, verrous, dossiers `logs/`, `cache/`, `tmp/`, `state/`) restent propres à chaque machine. Le droit d'exécution d'un script est transmis, mais jamais retiré par la synchronisation.
 - **Les serveurs MCP personnels** (la clé `mcpServers` de `~/.claude.json`), sans toucher au reste de ce fichier. Si ce fichier n'existe pas encore sur une machine, CSync ne le crée pas : lancez Claude Code une fois, les serveurs arriveront à la synchronisation suivante.
+- **Les fichiers de vos dossiers de travail**, avec `csync files setup` (voir « Les fichiers de travail ») : `~/Claude` et les dossiers des sessions sans dossier de l'app Desktop, par Syncthing.
 - **Les plugins**, indirectement : la liste des plugins activés et des marketplaces voyage dans `settings.json`, et Claude Code télécharge lui-même ce qui manque.
 
 ## Ce qui n'est jamais synchronisé
 
 - Votre connexion (`~/.claude/.credentials.json`, le reste de `~/.claude.json`, le trousseau macOS).
 - Les skills et plugins synchronisés par votre compte claude.ai (`skills/synced/`), que Claude Code gère déjà.
-- Le code de vos projets : chacun garde son propre dépôt git.
+- Le code de vos projets : chacun garde son propre dépôt git (sauf s'il se trouve dans un dossier partagé par `csync files`).
 - Les fichiers de plus de 50 Mo.
 - Les hooks de CSync eux-mêmes : chaque machine garde les siens dans `settings.json`, le reste du fichier est synchronisé.
 - Ce que vous déclarez propre à une machine (voir « Réglages propres à une machine »).
@@ -22,7 +23,7 @@ Synchronise Claude Code entre plusieurs machines (un Mac et un serveur Linux) vi
 ## Comment ça marche
 
 - **Chemins** : un scan repère vos projets. Un projet git est reconnu partout grâce à l'adresse de son dépôt distant, même s'il n'est pas rangé au même endroit sur les deux machines. Les chemins sont réécrits à l'envoi, puis à la réception. Quand l'autre machine annonce un projet inconnu ici, CSync le cherche dans votre dossier personnel (jamais pendant un hook, au plus une fois par jour pour un même projet). Sur Mac, les dossiers protégés (Bureau, Documents, Téléchargements) ne sont examinés que lors d'une action de votre part, jamais par la tâche de fond, pour ne pas déclencher de demande d'autorisation.
-- **Dossiers sans git** : un dossier situé dans votre dossier personnel est reconnu sur l'autre machine s'il est rangé au même endroit. Un dossier situé ailleurs (disque externe, `/var/www`…) n'est jamais partagé d'office : deux dossiers qui portent le même nom peuvent n'avoir aucun rapport. Pour le partager, donnez-lui le même nom sur les deux machines (`csync name-project`).
+- **Dossiers sans git** : un dossier situé dans votre dossier personnel est reconnu sur l'autre machine s'il est rangé au même endroit. S'il n'y existe pas encore, CSync le crée (vide) en recevant la conversation, ainsi que le dernier dossier où elle s'est poursuivie : sans lui, Claude Code ne la proposerait pas à la reprise. `csync status` liste les dossiers créés dans la semaine. Un projet git absent n'est jamais remplacé par un dossier vide. Un dossier situé ailleurs (disque externe, `/var/www`…) n'est jamais partagé d'office : deux dossiers qui portent le même nom peuvent n'avoir aucun rapport. Pour le partager, donnez-lui le même nom sur les deux machines (`csync name-project`).
 - **Envois légers** : les conversations sont découpées en tranches ; un ajout n'envoie que les nouvelles tranches. La configuration ne part que si elle a changé.
 - **Chiffrement** : tout est chiffré (AES-256-GCM) avec une clé qui ne quitte jamais vos machines. GitHub ne voit que des blocs illisibles ; les commits portent tous le même auteur (`csync`), le même message et une heure en temps universel.
 - **Sécurité des données** :
@@ -216,8 +217,11 @@ Des boutons supplémentaires apparaissent seulement en cas de besoin :
 |---|---|
 | `csync sync` | réception puis envoi (`--dry-run` pour un aperçu sans rien modifier) |
 | `csync push` / `csync pull` | envoi seul / réception seule ; `--allow-deletions` confirme une disparition massive de fichiers |
-| `csync resume [identifiant]` | met à jour, puis reprend une conversation avec `claude --resume` |
-| `csync status` | état, autres machines, alertes |
+| `csync resume [identifiant]` | met à jour, puis reprend une conversation avec `claude --resume`, depuis son dossier de travail (le début de l'identifiant suffit) |
+| `csync move <dossier> <nouveau chemin>` | déplace un dossier de travail ; ses conversations le suivent et restent reprenables, sur toutes les machines |
+| `csync files setup` | installe et configure la synchronisation des fichiers (Syncthing) |
+| `csync files status` | état de la synchronisation des fichiers |
+| `csync status` | état, autres machines, fichiers, alertes |
 | `csync scan` | rescanne la machine (nouveaux projets, projets déplacés) |
 | `csync name-project <dossier> <nom>` | partage un dossier sans git (ou un dépôt dont l'adresse diffère) sous un nom commun, à faire sur les deux machines |
 | `csync profile` | affiche le profil de la machine |
@@ -242,6 +246,30 @@ Si un même fichier a été modifié des deux côtés entre deux synchronisation
 4. **supprimez la copie** (ou cliquez « Marquer comme résolu ») : votre version sera alors envoyée à l'autre machine.
 
 Pour une conversation, la version de l'autre machine devient une nouvelle conversation, que vous pouvez reprendre avec `claude --resume`. Cette copie reste sur la machine où elle a été créée tant que vous n'y touchez pas ; si vous la reprenez, elle devient une conversation ordinaire, synchronisée comme les autres, et CSync ne la modifie plus jamais. Si l'autre machine continue ensuite sa propre version, la suite reste consultable ici dans une conversation à part, sans nouveau conflit à traiter.
+
+### Les fichiers de travail
+
+CSync synchronise les conversations, pas les fichiers. Pour les fichiers, `csync files setup` installe **Syncthing** (logiciel libre et gratuit, avec Homebrew), le lance à chaque démarrage du Mac et lui confie deux dossiers :
+
+- `~/Claude` ;
+- `~/Library/Application Support/Claude/scratch-workspaces`, où l'app Desktop range les sessions ouvertes sans dossier.
+
+Lancez la commande une fois sur chaque machine. Chacune publie son identifiant Syncthing dans le dépôt chiffré ; à la synchronisation suivante, les deux se relient toutes seules. Les fichiers passent directement d'une machine à l'autre, chiffrés, sans service en ligne ; les deux machines doivent être allumées en même temps pour échanger.
+
+- Un fichier supprimé ou remplacé par l'autre machine est gardé 30 jours dans le dossier caché `.stversions` du dossier partagé.
+- Si un même fichier a changé des deux côtés, Syncthing garde les deux versions (l'une porte `sync-conflict` dans son nom).
+- Ignorés : `.DS_Store`, `node_modules`, `.venv`, `__pycache__`.
+- Pour partager d'autres dossiers, modifiez la liste `file_folders` de `~/.csync/config.json` (chemins commençant par `~/`, identifiant identique sur les deux machines), puis relancez `csync files setup`.
+
+### Déplacer un dossier
+
+Déplacer un dossier dans le Finder coupe ses conversations : Claude Code ne les propose plus. Utilisez plutôt :
+
+```sh
+csync move ~/Claude/Ancien ~/Claude/Projects/Nouveau
+```
+
+CSync synchronise d'abord, déplace le dossier, réécrit le chemin dans ses conversations (copie de sauvegarde avant), puis l'annonce à l'autre machine, qui range les conversations au nouvel endroit et supprime les anciennes. Les fichiers suivent par Syncthing. La commande refuse si une conversation du dossier est ouverte. L'app Desktop garde sa propre liste de sessions : celles du dossier déplacé peuvent y pointer encore vers l'ancien chemin.
 
 ### Sessions en attente
 

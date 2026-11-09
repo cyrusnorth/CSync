@@ -34,11 +34,11 @@ from . import __version__
 from .adapter import get_path, load_adapter, set_path
 from .crypto import Cipher, load_key
 from .hooks import install_hooks, settings_has_our_hooks, strip_our_hooks
-from .paths import MachineConfig, Paths
+from .paths import MachineConfig, Paths, can_create_work_dir
 from .scan import build_mapper, load_profile, save_profile, scan
 from .state import State, push_hist
 from .store import Store
-from .tokens import PathMapper, make_token, slug
+from .tokens import TOKEN_OPEN, PathMapper, make_token, slug
 from .util import (CSyncError, LOG, atomic_write_bytes, canonical_json, claude_running, ensure_dir, now,
 				   path_inside, prune_empty_dirs, read_bytes, read_json_safe, remove_file, sha256_hex,
 				   symlink_on_path)
@@ -81,6 +81,7 @@ class Report:
 		self.warnings: List[str] = []
 		self.parked: List[Dict[str, Any]] = []
 		self.stale_current: List[str] = []   # machines où la conversation reprise a avancé
+		self.created_dirs: List[str] = []    # dossiers de travail créés pour des conversations reçues
 		self.pushed = False
 
 	def count(self, name: str, n: int = 1) -> None:
@@ -122,6 +123,9 @@ class Report:
 			n = self.counts.get(key)
 			if n:
 				lines.append("%s%s : %d" % (prefix, label, n))
+		if self.created_dirs:
+			lines.append("%sdossiers de travail créés pour des conversations reçues : %s"
+						 % (prefix, ", ".join(self.created_dirs)))
 		if not lines:
 			lines.append(prefix + "Rien à faire : tout est à jour.")
 		return lines + self.warnings
@@ -728,6 +732,9 @@ class Engine:
 				"mcp_servers", "format_check")
 		prof = {k: self.profile.get(k) for k in keep}
 		prof["csync_version"] = __version__
+		if self.config.get("files_enabled") and self.config.get("syncthing_id"):
+			# Les autres machines s'en servent pour se relier à celle-ci dans Syncthing.
+			prof["syncthing_id"] = self.config.get("syncthing_id")
 		return prof
 
 	def _entry_for(self, key: str, item: LocalItem) -> Optional[Dict[str, Any]]:
@@ -759,6 +766,7 @@ class Engine:
 		for field in ("chunks", "local_len", "local_hash", "stat", "missing_since", "conflict_seen", "conflict_ack"):
 			st.pop(field, None)
 		st["gone"] = True
+		self.state.data.get("cwd_checked", {}).pop(key, None)
 		self.state.data["conflicts"] = [c for c in self.state.conflicts if c.get("key") != key]
 		if path:
 			self._purge_backups_of(path)
@@ -1121,6 +1129,77 @@ class Engine:
 					return local
 		return None
 
+	# -- dossiers de travail absents ----------------------------------------------
+
+	def _creatable_dir(self, tokpath: str) -> Optional[str]:
+		"""Chemin local d'un dossier de travail absent que CSync peut créer, sinon None.
+
+		Seuls les dossiers repérés par rapport au dossier personnel sont créés : un projet git ou un
+		dossier nommé qui manque peut être sur un disque débranché, et un dossier vide à sa place
+		tromperait tout le monde."""
+		home_token = make_token("HOME")
+		if not tokpath.startswith(home_token) or TOKEN_OPEN in tokpath[len(home_token):]:
+			return None
+		local = self.mapper.detokenize_path(tokpath)
+		if not local or not can_create_work_dir(local, self.paths):
+			return None
+		return os.path.normpath(local)
+
+	def _create_work_dir(self, local: str, dry_run: bool) -> None:
+		if local in self.report.created_dirs:
+			return
+		if not dry_run:
+			try:
+				os.makedirs(local, exist_ok=True)
+			except OSError as exc:
+				self.report.warn("Dossier de travail impossible à créer (%s) : %s" % (local, exc))
+				return
+			LOG.info("Dossier de travail créé pour une conversation reçue : %s", local)
+			recent = [d for d in (self.state.get("created_dirs") or [])
+					  if d.get("path") != local and now() - float(d.get("ts") or 0) < 7 * 86400]
+			self.state.set("created_dirs", (recent + [{"path": local, "ts": now()}])[-10:])
+		self.report.created_dirs.append(local)
+
+	def _last_cwd_token(self, chunks: List[str]) -> Optional[str]:
+		"""Dernier dossier de travail écrit dans la session (repères non traduits)."""
+		key = self.adapter.get("session_cwd_key", "cwd")
+		for oid in reversed(chunks):
+			try:
+				lines = parse_chunk(self._get(oid))
+			except CSyncError:
+				return None
+			for line in reversed(lines):
+				try:
+					obj = json.loads(line)
+				except ValueError:
+					continue
+				value = get_path(obj, key) if isinstance(obj, dict) else None
+				if isinstance(value, str) and value:
+					return value
+		return None
+
+	def _ensure_work_dirs(self, key: str, tokcwd: str, cwd: str, rel: str, rentry: Dict[str, Any],
+						  dry_run: bool) -> None:
+		"""Crée, s'il manque, le dossier de travail d'une conversation reçue, ainsi que le dernier dossier
+		où elle s'est poursuivie : sans lui, Claude Code ne la propose pas à la reprise."""
+		if not os.path.isdir(cwd):
+			local = self._creatable_dir(tokcwd)
+			if local and local == os.path.normpath(cwd):
+				self._create_work_dir(local, dry_run)
+		chunks = rentry.get("chunks") or []
+		if rentry.get("k") != "jsonl" or "/" in rel or not chunks:
+			return
+		checked = self.state.data.setdefault("cwd_checked", {})
+		if checked.get(key) == chunks[-1]:
+			return   # dernière tranche déjà examinée
+		last = self._last_cwd_token(chunks)
+		if last:
+			local = self._creatable_dir(last)
+			if local:
+				self._create_work_dir(local, dry_run)
+		if not dry_run:
+			checked[key] = chunks[-1]
+
 	def _safe_rel(self, rel: str) -> bool:
 		parts = rel.split("/")
 		return bool(rel) and not rel.startswith("/") and ".." not in parts and "" not in parts and "." not in parts
@@ -1164,6 +1243,8 @@ class Engine:
 				return
 		if self._is_excluded(cwd):
 			return   # projet exclu sur cette machine
+		if not rentry.get("deleted"):
+			self._ensure_work_dirs(key, tokcwd, cwd, rel, rentry, dry_run)
 		root = self.projects_root
 		target = os.path.join(root, self._local_dir_for_cwd(cwd), rel)
 		if not path_inside(target, root) or symlink_on_path(target, root):

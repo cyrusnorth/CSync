@@ -233,3 +233,17 @@ def machine_binding(paths: "Paths") -> Optional[str]:
 		return None
 	import hashlib
 	return hashlib.sha256(("%s|%s" % (hw, paths.home)).encode("utf-8")).hexdigest()[:20]
+
+
+def can_create_work_dir(path: str, paths: "Paths") -> bool:
+	"""Vrai si CSync peut créer ce dossier de travail absent : il se trouve dans le dossier personnel,
+	hors de la corbeille et des dossiers de Claude Code et de CSync, et rien n'existe à sa place."""
+	from .util import path_inside
+	local = os.path.normpath(path)
+	home = os.path.normpath(paths.home)
+	if local == home or not path_inside(local, home) or os.path.lexists(local):
+		return False
+	for forbidden in (os.path.join(home, ".Trash"), paths.claude_dir, paths.csync_dir):
+		if path_inside(local, forbidden):
+			return False
+	return True

@@ -17,7 +17,7 @@ from .paths import MachineConfig, Paths, system_name
 from .scan import ScanResult, add_named_project, apply_user_choices, load_profile, save_profile, scan
 from .state import State
 from .store import Store
-from .util import CSyncError, human_time, read_json
+from .util import CSyncError, human_time, now, read_json
 
 
 class Controller:
@@ -66,6 +66,8 @@ class Controller:
 			"format_check": profile.get("format_check", {}),
 			"claude_version": profile.get("claude_version"),
 			"pending_repair": os.path.exists(self.paths.pending_adapter_file),
+			"created_dirs": [d.get("path") for d in (state.get("created_dirs") or [])
+							 if d.get("path") and now() - float(d.get("ts") or 0) < 7 * 86400],
 		})
 		alerts: List[str] = result["alerts"]
 		if result["last_error"]:
@@ -125,6 +127,10 @@ class Controller:
 					alerts.append("Versions de Claude Code différentes : %s ici, %s sur %s. Les formats de fichiers "
 								  "peuvent différer ; mettez à jour la plus ancienne." % (result["claude_version"],
 																						  m["claude_version"], m["name"]))
+			if config.get("files_enabled"):
+				from .files import status as files_status
+				result["files"] = files_status(self.paths, config, profiles)
+				alerts.extend(result["files"]["alerts"])
 			size = store.size_mb()
 			result["repo_size_mb"] = round(size, 1)
 			limit = float(config.get("auto_compact_mb", 300) or 0)

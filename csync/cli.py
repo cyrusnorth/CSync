@@ -79,6 +79,12 @@ def cmd_status(paths: Paths, args) -> int:
 	for m in status["machines"]:
 		print("Autre machine : %s [%s] (Claude Code %s), dernière mise à jour %s"
 			  % (m["name"], m["id"], m.get("claude_version") or "?", human_time(m.get("updated"))))
+	for line in (status.get("files") or {}).get("lines", []):
+		print(line)
+	if status.get("created_dirs"):
+		print("Dossiers de travail créés cette semaine pour des conversations reçues :")
+		for path in status["created_dirs"]:
+			print("  " + path)
 	for line in status["alerts"]:
 		print("• " + line)
 	if not status["alerts"]:
@@ -275,10 +281,68 @@ def cmd_resume(paths: Paths, args) -> int:
 	except CSyncError as exc:
 		print("CSync : synchronisation impossible (%s). La conversation est reprise telle qu'elle est ici." % exc,
 			  file=sys.stderr)
-	argv = [claude, "--resume"] + ([args.session] if args.session else [])
+	session = args.session
+	if session:
+		# Claude Code ne propose une conversation que depuis son dossier de travail : on s'y place.
+		from .sessions import find_session, prepare_work_dir, session_work_dir
+		path, project_dir = find_session(paths, session)
+		session = os.path.basename(path)[:-len(".jsonl")]
+		cwd = session_work_dir(paths, path, project_dir)
+		if cwd and prepare_work_dir(paths, cwd):
+			os.chdir(cwd)
+			print("CSync : reprise dans %s" % cwd, file=sys.stderr)
+		elif cwd:
+			raise CSyncError("Le dossier de travail de cette conversation (%s) est absent et CSync ne peut pas le "
+							 "créer (hors de votre dossier personnel). Créez-le ou branchez le disque, puis "
+							 "réessayez." % cwd)
+	argv = [claude, "--resume"] + ([session] if session else [])
 	sys.stdout.flush()
 	sys.stderr.flush()
 	os.execv(claude, argv)
+	return 0
+
+
+def cmd_move(paths: Paths, args) -> int:
+	from . import ops
+	result = ops.do_move(paths, args.old, args.new)
+	print("Dossier déplacé : %s → %s" % (result["old"], result["new"]))
+	print("Conversations rattachées au nouvel emplacement : %d (dans %d dossier(s) de conversations)."
+		  % (result["sessions"], result["session_dirs"]))
+	print("Les autres machines les recevront à leur prochaine synchronisation ; les fichiers du dossier "
+		  "suivent par la synchronisation des fichiers.")
+	_print_reports([result["report"]])
+	return 0
+
+
+def cmd_files(paths: Paths, args) -> int:
+	"""Synchronisation des fichiers de travail (Syncthing)."""
+	from . import files, ops
+	from .controller import Controller
+	if args.action == "setup":
+		# Profil envoyé d'abord : l'autre machine doit pouvoir lire l'identifiant Syncthing de celle-ci.
+		def go():
+			eng = ops.engine(paths)
+			eng.pull()
+			changes = files.setup(paths, eng.store.other_profiles())
+			eng.config = MachineConfig.load(paths)
+			eng.push()
+			return changes
+		changes = ops.run_locked(paths, "files-setup", go, 30)
+		for c in changes:
+			print("• " + c)
+		config = MachineConfig.load(paths)
+		print("Synchronisation des fichiers active pour :")
+		for f in files.folders(paths, config):
+			print("  " + f["path"])
+		print("Faites de même sur l'autre machine (« csync files setup ») : les deux se relieront toutes seules.")
+		return 0
+	status = Controller(paths).status()
+	info = status.get("files") or {}
+	if not info.get("enabled"):
+		print("La synchronisation des fichiers n'est pas activée. Lancez « csync files setup ».")
+		return 1
+	for line in info.get("lines", []) + info.get("alerts", []):
+		print(line)
 	return 0
 
 
@@ -442,6 +506,15 @@ def build_parser() -> argparse.ArgumentParser:
 	p = sub.add_parser("resume", help="met à jour puis reprend une conversation (claude --resume)")
 	p.add_argument("session", nargs="?", help="identifiant de la conversation (sinon, liste à choisir)")
 	p.set_defaults(func=cmd_resume)
+
+	p = sub.add_parser("move", help="déplace un dossier de travail sans perdre ses conversations")
+	p.add_argument("old", help="dossier à déplacer")
+	p.add_argument("new", help="nouvel emplacement (chemin complet, y compris le nom)")
+	p.set_defaults(func=cmd_move)
+
+	p = sub.add_parser("files", help="synchronisation des fichiers de travail (Syncthing)")
+	p.add_argument("action", choices=["setup", "status"])
+	p.set_defaults(func=cmd_files)
 
 	p = sub.add_parser("local", help="réglages et serveurs MCP propres à cette machine")
 	p.add_argument("kind", nargs="?", choices=["settings", "mcp"])
