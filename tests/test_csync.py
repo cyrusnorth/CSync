@@ -22,6 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 os.environ["CSYNC_ASSUME_CLAUDE_RUNNING"] = "0"
+os.environ["CSYNC_ASSUME_APP_RUNNING"] = "0"
 os.environ.pop("CLAUDE_CONFIG_DIR", None)
 for _var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
 	os.environ.pop(_var, None)

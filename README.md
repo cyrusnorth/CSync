@@ -8,6 +8,7 @@ Synchronise Claude Code entre plusieurs machines (un Mac et un serveur Linux) vi
 - **La configuration** : `CLAUDE.md`, `settings.json`, `keybindings.json`, les dossiers `skills/`, `agents/`, `commands/`, `output-styles/`, `rules/`, `workflows/`, `themes/`, `agent-memory/`, `hooks/`, ainsi que les fichiers de `~/.claude` que `settings.json` mentionne (script de la barre d'état, par exemple). Les fichiers de fonctionnement que des scripts écrivent parfois dans ces dossiers (journaux `.log`, bases `.db`, verrous, dossiers `logs/`, `cache/`, `tmp/`, `state/`) restent propres à chaque machine. Le droit d'exécution d'un script est transmis, mais jamais retiré par la synchronisation.
 - **Les serveurs MCP personnels** (la clé `mcpServers` de `~/.claude.json`), sans toucher au reste de ce fichier. Si ce fichier n'existe pas encore sur une machine, CSync ne le crée pas : lancez Claude Code une fois, les serveurs arriveront à la synchronisation suivante.
 - **Les fichiers de vos dossiers de travail**, avec `csync files setup` (voir « Les fichiers de travail ») : tout `~/Claude`, par Syncthing.
+- **La barre latérale de l'app Claude** (onglet Code) : une conversation reçue de l'autre machine y apparaît, sous son dossier (voir « La barre latérale de l'app Claude »).
 - **Les plugins**, indirectement : la liste des plugins activés et des marketplaces voyage dans `settings.json`, et Claude Code télécharge lui-même ce qui manque.
 
 ## Ce qui n'est jamais synchronisé
@@ -269,7 +270,13 @@ Déplacer un dossier dans le Finder coupe ses conversations : Claude Code ne les
 csync move ~/Claude/Ancien ~/Claude/Projects/Nouveau
 ```
 
-CSync synchronise d'abord, déplace le dossier, réécrit le chemin dans ses conversations (copie de sauvegarde avant), puis l'annonce à l'autre machine, qui range les conversations au nouvel endroit et supprime les anciennes. Les fichiers suivent par Syncthing. Les conversations commencées ailleurs mais poursuivies dans ce dossier le suivent aussi. La commande refuse si une conversation du dossier est ouverte. Si le dossier a déjà été déplacé dans le Finder, `csync relink <ancien> <nouveau>` rattache ses conversations après coup. L'app Desktop garde sa propre liste de sessions : celles du dossier déplacé peuvent y pointer encore vers l'ancien chemin.
+CSync synchronise d'abord, déplace le dossier, réécrit le chemin dans ses conversations (copie de sauvegarde avant), puis l'annonce à l'autre machine, qui range les conversations au nouvel endroit et supprime les anciennes. Les fichiers suivent par Syncthing. Les conversations commencées ailleurs mais poursuivies dans ce dossier le suivent aussi. La commande refuse si une conversation du dossier est ouverte. Si le dossier a déjà été déplacé dans le Finder, `csync relink <ancien> <nouveau>` rattache ses conversations après coup. Dans la barre latérale de l'app Claude, les sessions du dossier déplacé suivent aussi (voir ci-dessous).
+
+### La barre latérale de l'app Claude
+
+L'app Claude affiche dans son onglet Code une liste de sessions qui lui est propre : une fiche par session, dans `~/Library/Application Support/Claude/claude-code-sessions`. Chaque machine publie, chiffrée, une version réduite de ses fiches : titre, dates, archivée ou non. Le reste de la fiche (réglages, serveurs MCP) ne quitte pas la machine. L'autre machine crée alors une fiche pour chaque conversation reçue qui n'en a pas, rangée sous le dossier de la conversation. Une fiche dont la conversation a changé de dossier (`csync move`) est rattachée au nouveau dossier. Une fiche créée par CSync que vous retirez de la barre latérale n'est pas recréée.
+
+L'app ne lit ses fiches qu'à son démarrage, et réécrit celles qu'elle garde en mémoire : CSync ne les modifie donc que lorsque l'app est fermée. Si elle est ouverte, `csync status` l'indique. Quittez l'app (⌘Q), lancez `csync sync`, puis rouvrez-la. Le format de ces fiches appartient à l'app et n'est pas documenté : une mise à jour de l'app peut le changer.
 
 ### Sessions en attente
 

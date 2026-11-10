@@ -79,6 +79,11 @@ class Controller:
 			alerts.append("%d session(s) en attente : projet absent de cette machine." % total)
 		if result["pending_mcp"]:
 			alerts.append("Serveurs MCP à appliquer dès que Claude Code sera fermé : %s." % ", ".join(result["pending_mcp"]))
+		cards = int(state.get("app_cards_pending") or 0)
+		if cards:
+			alerts.append("%d session(s) à ajouter ou rattacher dans la barre latérale de l'app Claude. L'app ne "
+						  "relit sa liste qu'au démarrage : quittez-la (⌘Q), lancez « csync sync » dans le Terminal, "
+						  "puis rouvrez-la." % cards)
 		links = state.get("unmanaged_links") or []
 		if links:
 			shown = ", ".join(links[:3]) + (" (et %d autres)" % (len(links) - 3) if len(links) > 3 else "")

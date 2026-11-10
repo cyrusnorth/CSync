@@ -575,6 +575,31 @@ class Store:
 			return None
 		return self._decrypt_json(blob, "profile:" + machine)
 
+	def write_cards(self, cards: Dict[str, Any]) -> None:
+		"""Fiches réduites de la barre latérale de l'app Claude (voir appcards.py)."""
+		path = os.path.join(self.repo_dir, "cards", self.machine_id + ".bin")
+		ensure_dir(os.path.dirname(path))
+		self._write_if_changed(path, cards, "cards:" + self.machine_id)
+
+	def other_cards(self) -> Dict[str, Dict[str, Any]]:
+		out = {}
+		base = os.path.join(self.repo_dir, "cards")
+		try:
+			names = sorted(n[:-4] for n in os.listdir(base) if n.endswith(".bin"))
+		except FileNotFoundError:
+			names = []
+		for machine in names:
+			if machine == self.machine_id:
+				continue
+			try:
+				data = self._decrypt_json(read_bytes(os.path.join(base, machine + ".bin")) or b"", "cards:" + machine)
+			except (CSyncError, ValueError) as exc:
+				LOG.error("Fiches de la machine %s illisibles : %s", machine, exc)
+				continue
+			if isinstance(data, dict):
+				out[machine] = data
+		return out
+
 	def forget_machine(self, machine: str) -> None:
 		"""Retire l'état et le profil d'une machine disparue. Ses contenus encore utilisés par
 		d'autres restent en place ; les autres partiront au prochain compactage."""
@@ -582,6 +607,7 @@ class Store:
 			raise CSyncError("Machine invalide : %s" % machine)
 		shutil.rmtree(os.path.join(self.repo_dir, "manifests", machine), ignore_errors=True)
 		remove_file(os.path.join(self.repo_dir, "profiles", machine + ".bin"))
+		remove_file(os.path.join(self.repo_dir, "cards", machine + ".bin"))
 
 	def list_machines(self) -> List[str]:
 		base = os.path.join(self.repo_dir, "manifests")

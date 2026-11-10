@@ -104,6 +104,8 @@ class Report:
 		"sessions_active_skipped": "sessions en cours d'utilisation laissées intactes",
 		"sessions_deleted": "conversations supprimées (supprimées sur l'autre machine)",
 		"files_applied": "fichiers de configuration mis à jour",
+		"app_cards": "sessions ajoutées ou rattachées dans la barre latérale de l'app Claude",
+		"app_cards_pending": "sessions à mettre à jour dans la barre latérale de l'app Claude (quand elle sera fermée)",
 		"files_deleted": "fichiers supprimés (supprimés sur l'autre machine)",
 		"files_conflict": "fichiers en conflit (copie créée)",
 		"mcp_applied": "serveurs MCP mis à jour",
@@ -717,6 +719,12 @@ class Engine:
 			return report
 		self.store.write_manifest(meta, entries)
 		self.store.write_profile(self._public_profile())
+		if self._sessions_enabled():
+			from .appcards import export_cards
+			try:
+				self.store.write_cards(export_cards(self.paths))
+			except OSError as exc:
+				LOG.error("Fiches de l'app Claude non publiées : %s", exc)
 		# L'état est enregistré avant l'envoi : si l'envoi échoue, les blocs sont déjà dans le
 		# dépôt local et le prochain envoi les emportera.
 		self.state.save(self.paths)
@@ -1893,7 +1901,39 @@ class Engine:
 			 prefer_remote: bool = False, allow_deletions: bool = False) -> List[Report]:
 		pulled = self.pull(dry_run=dry_run, current_session=current_session, prefer_remote=prefer_remote)
 		pushed = self.push(dry_run=dry_run, allow_deletions=allow_deletions)
+		self.update_app_cards(pushed, dry_run)
 		return [pulled, pushed]
+
+	def update_app_cards(self, report: Report, dry_run: bool = False) -> None:
+		"""Met la barre latérale de l'app Claude à jour (voir appcards.py) : uniquement app fermée."""
+		if not self._sessions_enabled():
+			return
+		from .appcards import app_running, apply_changes, plan_changes
+		try:
+			created = set(self.state.get("app_cards_created", []))
+			changes = plan_changes(self.paths, self.profile.get("dir_map") or {}, self.store.other_cards(), created)
+		except Exception as exc:  # la barre latérale ne doit jamais bloquer la synchronisation
+			LOG.exception("Fiches de l'app Claude")
+			report.warn("Barre latérale de l'app Claude non mise à jour : %s" % exc)
+			return
+		if dry_run or not changes:
+			if changes:
+				report.count("app_cards", len(changes))
+			if not dry_run:
+				self.state.set("app_cards_pending", 0)
+				self.state.save(self.paths)
+			return
+		if app_running():
+			self.state.set("app_cards_pending", len(changes))
+			self.state.save(self.paths)
+			report.count("app_cards_pending", len(changes))
+			return
+		done = apply_changes(changes)
+		created.update(os.path.basename(path)[:-len(".json")] for action, path, _c in changes if action == "create")
+		self.state.set("app_cards_created", sorted(created))
+		self.state.set("app_cards_pending", len(changes) - done)
+		self.state.save(self.paths)
+		report.count("app_cards", done)
 
 	def compact(self) -> Tuple[int, float, float]:
 		"""Envoie d'abord nos changements, puis réduit le dépôt aux seuls blocs encore utilisés."""

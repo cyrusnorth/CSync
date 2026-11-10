@@ -1,6 +1,6 @@
 """CSync : synchronisation de Claude Code entre plusieurs machines via GitHub."""
 
-__version__ = "1.1.3"
+__version__ = "1.1.4"
 
 # Version du format des données envoyées sur le dépôt. Elle ne change que si
 # la structure du dépôt de données change de manière incompatible.

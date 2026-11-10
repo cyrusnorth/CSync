@@ -185,6 +185,7 @@ def do_move(paths: Paths, old: str, new: str, lock_timeout: float = 30.0, relink
 		eng.refresh_profile(full=False)
 		report = eng.push()
 		update_status(paths, last_push=now())
+		eng.update_app_cards(report)
 		result["report"] = report
 		return result
 	return run_locked(paths, "move", go, lock_timeout)
