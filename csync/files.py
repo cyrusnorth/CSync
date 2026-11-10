@@ -28,9 +28,11 @@ from .util import CSyncError, LOG, run, tool_path
 
 DEFAULT_FOLDERS = [
 	{"id": "csync-claude", "path": "~/Claude", "label": "Claude"},
-	{"id": "csync-claude-desktop", "path": "~/Library/Application Support/Claude/scratch-workspaces",
-	 "label": "Claude Desktop (sessions sans dossier)"},
 ]
+# Dossiers que CSync a partagés autrefois et retire. Le dossier des sessions sans dossier de l'app
+# Desktop en fait partie : l'app y supprime les dossiers qu'elle ne reconnaît pas, et Syncthing
+# reproduisait ces suppressions sur l'autre machine.
+RETIRED_FOLDER_IDS = {"csync-claude-desktop"}
 IGNORES = ["(?d).DS_Store", "(?d)node_modules", "(?d).venv", "(?d)__pycache__", "(?d).Spotlight-V100",
 		   "(?d).Trashes"]
 VERSION_DAYS = 30
@@ -121,7 +123,7 @@ def folders(paths: Paths, config: MachineConfig) -> List[Dict[str, str]]:
 	"""Dossiers partagés, avec leur chemin sur cette machine."""
 	result = []
 	for f in config.get("file_folders") or DEFAULT_FOLDERS:
-		if not isinstance(f, dict) or not f.get("id") or not f.get("path"):
+		if not isinstance(f, dict) or not f.get("id") or not f.get("path") or f["id"] in RETIRED_FOLDER_IDS:
 			continue
 		raw = str(f["path"])
 		local = os.path.join(paths.home, raw[2:]) if raw.startswith("~/") else raw
@@ -153,6 +155,10 @@ def ensure(st: Syncthing, paths: Paths, config: MachineConfig, peers: List[Dict[
 		st.request("PUT", "/rest/config/devices/" + urllib.parse.quote(peer["id"], safe=""), dev)
 		changes.append("appareil ajouté : %s" % peer["name"])
 	existing = {f.get("id"): f for f in current.get("folders", [])}
+	for fid in sorted(RETIRED_FOLDER_IDS & set(existing)):
+		# Retiré de Syncthing seulement : les fichiers restent en place sur chaque machine.
+		st.request("DELETE", "/rest/config/folders/" + urllib.parse.quote(fid, safe=""))
+		changes.append("dossier retiré du partage : %s" % existing[fid].get("path"))
 	wanted_devices = [my_id] + [p["id"] for p in peers]
 	for f in folders(paths, config):
 		os.makedirs(f["path"], exist_ok=True)
@@ -243,8 +249,8 @@ def setup(paths: Paths, peers_profiles: Dict[str, Dict[str, Any]], st: Optional[
 	_remove_default_folder(st, paths)
 	config.data["files_enabled"] = True
 	config.data["syncthing_id"] = my_id
-	if not config.get("file_folders"):
-		config.data["file_folders"] = DEFAULT_FOLDERS
+	kept = [f for f in (config.get("file_folders") or []) if isinstance(f, dict) and f.get("id") not in RETIRED_FOLDER_IDS]
+	config.data["file_folders"] = kept or DEFAULT_FOLDERS
 	config.save(paths)
 	return ensure(st, paths, config, peers_from_profiles(peers_profiles, my_id))
 

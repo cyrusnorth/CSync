@@ -55,7 +55,7 @@ class MissingWorkDir(Harness):
 		lx.sync()
 		lx_scratch = os.path.join(lx.home, "Library", "Application Support", "Claude", "scratch-1")
 		lx_final = os.path.join(lx.home, "Claude", "Sujet")
-		self.assertTrue(os.path.isdir(lx_scratch))
+		self.assertFalse(os.path.exists(lx_scratch), "dossier créé dans ~/Library, domaine des applications")
 		self.assertTrue(os.path.isdir(lx_final), "dernier dossier de travail non créé")
 		self.assertTrue(os.path.exists(lx.session_path(lx_scratch, sid)))
 

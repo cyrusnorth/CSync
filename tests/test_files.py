@@ -159,9 +159,7 @@ class FilesSync(Harness):
 			self.assertEqual({d["deviceID"] for d in folder["devices"]}, {own, other})
 			self.assertEqual(folder["versioning"]["type"], "trashcan")
 			self.assertEqual(folder["versioning"]["params"]["cleanoutDays"], "30")
-			scratch = fake.folder("csync-claude-desktop")
-			self.assertEqual(scratch["path"],
-							 os.path.join(home, "Library", "Application Support", "Claude", "scratch-workspaces"))
+			self.assertFalse([f for f in fake.config["folders"] if f["id"] == "csync-claude-desktop"])
 			self.assertIn("(?d).DS_Store", fake.ignores["csync-claude"])
 			self.assertTrue(os.path.isdir(os.path.join(home, "Claude")))
 			self.assertFalse([f for f in fake.config["folders"] if f["id"] == "default"],
@@ -189,3 +187,21 @@ class FilesSync(Harness):
 		status = Controller(m.paths).status()
 		self.assertTrue(any("Syncthing ne répond pas" in a for a in status["alerts"]))
 		self.st_mac = FakeSyncthing("MAC-ID")   # pour tearDown
+
+	def test_retired_desktop_folder_is_removed_from_syncthing(self):
+		"""Version 1.1.0 : le dossier des sessions sans dossier était partagé ; il est retiré, fichiers intacts."""
+		self._setup_both()
+		m = self.mac
+		scratch = os.path.join(m.home, "Library", "Application Support", "Claude", "scratch-workspaces")
+		write(os.path.join(scratch, "s1", "fichier.md"), "garde-moi\n")
+		self.st_mac.config["folders"].append({"id": "csync-claude-desktop", "path": scratch,
+											  "devices": [{"deviceID": "MAC-ID"}]})
+		config = MachineConfig.load(m.paths)
+		config.data["file_folders"] = [{"id": "csync-claude", "path": "~/Claude"},
+									   {"id": "csync-claude-desktop", "path": "~/Library/Application Support/Claude/scratch-workspaces"}]
+		config.save(m.paths)
+		changes = self._files_setup(m)
+		self.assertTrue(any("retiré" in c for c in changes))
+		self.assertFalse([f for f in self.st_mac.config["folders"] if f["id"] == "csync-claude-desktop"])
+		self.assertTrue(os.path.exists(os.path.join(scratch, "s1", "fichier.md")))
+		self.assertEqual([f["id"] for f in MachineConfig.load(m.paths).get("file_folders")], ["csync-claude"])

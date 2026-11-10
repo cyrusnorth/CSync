@@ -7,7 +7,7 @@ Synchronise Claude Code entre plusieurs machines (un Mac et un serveur Linux) vi
 - **Les conversations de Claude Code** (`~/.claude/projects/`), y compris les sous-agents et la mémoire automatique des projets. Une conversation commencée sur une machine se reprend sur l'autre avec `claude --resume`.
 - **La configuration** : `CLAUDE.md`, `settings.json`, `keybindings.json`, les dossiers `skills/`, `agents/`, `commands/`, `output-styles/`, `rules/`, `workflows/`, `themes/`, `agent-memory/`, `hooks/`, ainsi que les fichiers de `~/.claude` que `settings.json` mentionne (script de la barre d'état, par exemple). Les fichiers de fonctionnement que des scripts écrivent parfois dans ces dossiers (journaux `.log`, bases `.db`, verrous, dossiers `logs/`, `cache/`, `tmp/`, `state/`) restent propres à chaque machine. Le droit d'exécution d'un script est transmis, mais jamais retiré par la synchronisation.
 - **Les serveurs MCP personnels** (la clé `mcpServers` de `~/.claude.json`), sans toucher au reste de ce fichier. Si ce fichier n'existe pas encore sur une machine, CSync ne le crée pas : lancez Claude Code une fois, les serveurs arriveront à la synchronisation suivante.
-- **Les fichiers de vos dossiers de travail**, avec `csync files setup` (voir « Les fichiers de travail ») : `~/Claude` et les dossiers des sessions sans dossier de l'app Desktop, par Syncthing.
+- **Les fichiers de vos dossiers de travail**, avec `csync files setup` (voir « Les fichiers de travail ») : tout `~/Claude`, par Syncthing.
 - **Les plugins**, indirectement : la liste des plugins activés et des marketplaces voyage dans `settings.json`, et Claude Code télécharge lui-même ce qui manque.
 
 ## Ce qui n'est jamais synchronisé
@@ -249,10 +249,9 @@ Pour une conversation, la version de l'autre machine devient une nouvelle conver
 
 ### Les fichiers de travail
 
-CSync synchronise les conversations, pas les fichiers. Pour les fichiers, `csync files setup` installe **Syncthing** (logiciel libre et gratuit, avec Homebrew), le lance à chaque démarrage du Mac et lui confie deux dossiers :
+CSync synchronise les conversations, pas les fichiers. Pour les fichiers, `csync files setup` installe **Syncthing** (logiciel libre et gratuit, avec Homebrew), le lance à chaque démarrage du Mac et lui confie le dossier `~/Claude`.
 
-- `~/Claude` ;
-- `~/Library/Application Support/Claude/scratch-workspaces`, où l'app Desktop range les sessions ouvertes sans dossier.
+Les dossiers des sessions ouvertes sans dossier dans l'app Desktop (`~/Library/Application Support/Claude/scratch-workspaces`) ne sont pas partagés : l'app y supprime les dossiers qu'elle ne reconnaît pas, et ces suppressions passaient d'une machine à l'autre. Rangez dans `~/Claude` ce qui doit être gardé (`csync move` pour une session déjà commencée). CSync ne crée jamais de dossier dans `~/Library`.
 
 Lancez la commande une fois sur chaque machine. Chacune publie son identifiant Syncthing dans le dépôt chiffré ; à la synchronisation suivante, les deux se relient toutes seules. Les fichiers passent directement d'une machine à l'autre, chiffrés, sans service en ligne ; les deux machines doivent être allumées en même temps pour échanger.
 

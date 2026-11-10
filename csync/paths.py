@@ -243,7 +243,10 @@ def can_create_work_dir(path: str, paths: "Paths") -> bool:
 	home = os.path.normpath(paths.home)
 	if local == home or not path_inside(local, home) or os.path.lexists(local):
 		return False
-	for forbidden in (os.path.join(home, ".Trash"), paths.claude_dir, paths.csync_dir):
+	# ~/Library appartient aux applications : l'app Desktop, par exemple, y supprime les dossiers de
+	# sessions qu'elle ne reconnaît pas.
+	for forbidden in (os.path.join(home, ".Trash"), os.path.join(home, "Library"), paths.claude_dir,
+					  paths.csync_dir):
 		if path_inside(local, forbidden):
 			return False
 	return True
