@@ -136,7 +136,9 @@ def move_folder(eng: Engine, old: str, new: str, relink_only: bool = False) -> D
 	pairs: List[Tuple[str, str]] = []
 	for unit in units:
 		for path, target in _unit_files(projects, unit):
-			ids = UUID_RE.findall(os.path.relpath(path, projects))
+			# Identifiant de la conversation : début du chemin dans son dossier de conversations (le nom de
+			# ce dossier peut lui-même contenir des identifiants, ceux de l'app Desktop par exemple).
+			ids = UUID_RE.findall(os.path.relpath(path, os.path.join(projects, unit[0])).split(os.sep)[0])
 			if ids and ids[0] in active:
 				raise CSyncError("Une conversation de ce dossier est ouverte dans Claude Code (%s). Fermez-la, "
 								 "puis relancez la commande." % ids[0])

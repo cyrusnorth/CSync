@@ -225,3 +225,20 @@ class ResumeAndMove(Harness):
 		res = self._cli(m, ["relink", old, new])
 		self.assertEqual(res.returncode, 0, res.stderr)
 		self.assertEqual({l["cwd"] for l in self._read_lines(m.session_path(new, sid))}, {new})
+
+	def test_identifiers_in_the_folder_name_are_not_taken_for_open_conversations(self):
+		"""Les dossiers de l'app Desktop contiennent des identifiants qui ne sont pas des conversations."""
+		self._setup_both()
+		m = self.mac
+		org = str(uuid.uuid4())
+		scratch = os.path.join(m.home, "Library", "Application Support", "Claude", org, "scratch-1")
+		old = os.path.join(m.home, "Claude", "Sujet")
+		os.makedirs(scratch)
+		os.makedirs(old)
+		sid = str(uuid.uuid4())
+		write(m.session_path(scratch, sid), jsonl([{"type": "user", "sessionId": sid, "cwd": old}]))
+		other = str(uuid.uuid4())   # conversation ouverte ailleurs, dont le dossier contient le même identifiant
+		write(os.path.join(m.paths.claude_sessions_dir, "%d.json" % os.getpid()),
+			  '{"sessionId": "%s", "cwd": "%s"}' % (other, scratch))
+		ops.do_move(m.paths, old, os.path.join(m.home, "Claude", "Sujet2"))
+		self.assertTrue(os.path.exists(m.session_path(os.path.join(m.home, "Claude", "Sujet2"), sid)))
