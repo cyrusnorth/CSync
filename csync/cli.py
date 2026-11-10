@@ -304,8 +304,12 @@ def cmd_resume(paths: Paths, args) -> int:
 
 def cmd_move(paths: Paths, args) -> int:
 	from . import ops
-	result = ops.do_move(paths, args.old, args.new)
-	print("Dossier déplacé : %s → %s" % (result["old"], result["new"]))
+	relink = args.command == "relink"
+	result = ops.do_move(paths, args.old, args.new, relink_only=relink)
+	if relink:
+		print("Conversations de %s rattachées à %s." % (result["old"], result["new"]))
+	else:
+		print("Dossier déplacé : %s → %s" % (result["old"], result["new"]))
 	print("Conversations rattachées au nouvel emplacement : %d (dans %d dossier(s) de conversations)."
 		  % (result["sessions"], result["session_dirs"]))
 	print("Les autres machines les recevront à leur prochaine synchronisation ; les fichiers du dossier "
@@ -510,6 +514,11 @@ def build_parser() -> argparse.ArgumentParser:
 	p = sub.add_parser("move", help="déplace un dossier de travail sans perdre ses conversations")
 	p.add_argument("old", help="dossier à déplacer")
 	p.add_argument("new", help="nouvel emplacement (chemin complet, y compris le nom)")
+	p.set_defaults(func=cmd_move)
+
+	p = sub.add_parser("relink", help="rattache les conversations d'un dossier déjà déplacé (dans le Finder) à son nouvel emplacement")
+	p.add_argument("old", help="ancien emplacement du dossier")
+	p.add_argument("new", help="nouvel emplacement")
 	p.set_defaults(func=cmd_move)
 
 	p = sub.add_parser("files", help="synchronisation des fichiers de travail (Syncthing)")

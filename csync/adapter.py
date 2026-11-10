@@ -276,3 +276,19 @@ def structure_summary(projects_dir: str, claude_json_path: str, adapter: Dict[st
 		"cles_de_claude_json": claude_json_keys,
 		"adaptateur_actuel": adapter,
 	}
+
+
+def session_last_cwd(path: str, adapter: Dict[str, Any]) -> Optional[str]:
+	"""Dernier dossier de travail écrit dans une session (lu à la fin du fichier)."""
+	import re
+	key = str(adapter["session_cwd_key"]).split(".")[-1]
+	pattern = re.compile(r'"%s"\s*:\s*"((?:[^"\\]|\\.)*)"' % re.escape(key))
+	try:
+		size = os.path.getsize(path)
+		with open(path, "rb") as fh:
+			fh.seek(max(0, size - 65536))
+			found = pattern.findall(fh.read().decode("utf-8", "surrogateescape"))
+		value = json.loads('"%s"' % found[-1]) if found else None
+	except (OSError, ValueError):
+		return None
+	return value if isinstance(value, str) and value.startswith("/") else None

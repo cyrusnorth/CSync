@@ -219,6 +219,7 @@ Des boutons supplémentaires apparaissent seulement en cas de besoin :
 | `csync push` / `csync pull` | envoi seul / réception seule ; `--allow-deletions` confirme une disparition massive de fichiers |
 | `csync resume [identifiant]` | met à jour, puis reprend une conversation avec `claude --resume`, depuis son dossier de travail (le début de l'identifiant suffit) |
 | `csync move <dossier> <nouveau chemin>` | déplace un dossier de travail ; ses conversations le suivent et restent reprenables, sur toutes les machines |
+| `csync relink <ancien> <nouveau>` | après un déplacement fait dans le Finder : rattache les conversations du dossier à son nouvel emplacement |
 | `csync files setup` | installe et configure la synchronisation des fichiers (Syncthing) |
 | `csync files status` | état de la synchronisation des fichiers |
 | `csync status` | état, autres machines, fichiers, alertes |
@@ -268,7 +269,7 @@ Déplacer un dossier dans le Finder coupe ses conversations : Claude Code ne les
 csync move ~/Claude/Ancien ~/Claude/Projects/Nouveau
 ```
 
-CSync synchronise d'abord, déplace le dossier, réécrit le chemin dans ses conversations (copie de sauvegarde avant), puis l'annonce à l'autre machine, qui range les conversations au nouvel endroit et supprime les anciennes. Les fichiers suivent par Syncthing. La commande refuse si une conversation du dossier est ouverte. L'app Desktop garde sa propre liste de sessions : celles du dossier déplacé peuvent y pointer encore vers l'ancien chemin.
+CSync synchronise d'abord, déplace le dossier, réécrit le chemin dans ses conversations (copie de sauvegarde avant), puis l'annonce à l'autre machine, qui range les conversations au nouvel endroit et supprime les anciennes. Les fichiers suivent par Syncthing. Les conversations commencées ailleurs mais poursuivies dans ce dossier le suivent aussi. La commande refuse si une conversation du dossier est ouverte. Si le dossier a déjà été déplacé dans le Finder, `csync relink <ancien> <nouveau>` rattache ses conversations après coup. L'app Desktop garde sa propre liste de sessions : celles du dossier déplacé peuvent y pointer encore vers l'ancien chemin.
 
 ### Sessions en attente
 

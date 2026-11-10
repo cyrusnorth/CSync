@@ -184,3 +184,44 @@ class ResumeAndMove(Harness):
 		os.makedirs(new)
 		with self.assertRaises(CSyncError):
 			ops.do_move(m.paths, old, new)
+
+	def test_move_takes_along_a_session_filed_under_its_first_folder(self):
+		"""Le cas du 8 novembre : session rangée sous un dossier temporaire, poursuivie dans le dossier déplacé."""
+		self._setup_both()
+		m, lx = self.mac, self.linux
+		scratch = os.path.join(m.home, "Library", "Application Support", "Claude", "scratch-9")
+		old = os.path.join(m.home, "Claude", "Psycho")
+		os.makedirs(scratch)
+		os.makedirs(old)
+		sid = str(uuid.uuid4())
+		write(m.session_path(scratch, sid), jsonl([{"type": "user", "sessionId": sid, "cwd": scratch, "uuid": "a"},
+												   {"type": "user", "sessionId": sid, "cwd": old, "uuid": "b"}]))
+		write(os.path.join(m.session_dir(scratch), sid, "subagents", "agent-1.jsonl"),
+			  jsonl([{"type": "user", "sessionId": sid, "cwd": old}]))
+		m.push()
+		lx.sync()
+		os.makedirs(os.path.join(m.home, "Claude", "Projects"))
+		new = os.path.join(m.home, "Claude", "Projects", "Psycho")
+		result = ops.do_move(m.paths, old, new)
+		self.assertEqual(result["sessions"], 1)
+		moved = m.session_path(new, sid)
+		self.assertEqual([l["cwd"] for l in self._read_lines(moved)], [scratch, new])
+		self.assertTrue(os.path.exists(os.path.join(m.session_dir(new), sid, "subagents", "agent-1.jsonl")))
+		self.assertFalse(os.path.exists(m.session_path(scratch, sid)))
+		lx.sync()
+		lx_new = os.path.join(lx.home, "Claude", "Projects", "Psycho")
+		self.assertTrue(os.path.exists(lx.session_path(lx_new, sid)))
+		self.assertFalse(os.path.exists(lx.session_path(os.path.join(lx.home, "Library", "Application Support",
+																	  "Claude", "scratch-9"), sid)))
+
+	def test_relink_after_a_move_in_the_finder(self):
+		self._setup_both()
+		m = self.mac
+		old = os.path.join(m.home, "Claude", "Avant")
+		os.makedirs(old)
+		sid = self._session(m, old)
+		new = os.path.join(m.home, "Claude", "Après")
+		os.rename(old, new)                      # déplacé dans le Finder
+		res = self._cli(m, ["relink", old, new])
+		self.assertEqual(res.returncode, 0, res.stderr)
+		self.assertEqual({l["cwd"] for l in self._read_lines(m.session_path(new, sid))}, {new})

@@ -11,7 +11,7 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from .adapter import check_format, get_path, session_cwd
+from .adapter import check_format, get_path, session_cwd, session_last_cwd
 from .paths import Paths, system_name
 from .tokens import PathMapper
 from .util import LOG, iso, now, read_json, read_json_safe, run, which, write_json
@@ -109,10 +109,19 @@ def collect_cwds(paths: Paths, adapter: Dict[str, Any], known_dirs: Dict[str, st
 						   key=lambda f: os.path.getmtime(os.path.join(full, f)), reverse=True)
 		except OSError:
 			files = []
+		# Le dossier de travail qu'il représente : de préférence celui dont le nom correspond (une session
+		# peut avoir commencé ailleurs, puis avoir été déplacée ici par « csync move »).
+		from .tokens import slug as _slug
+		candidates: List[str] = []
 		for f in files[:5]:
-			cwd = session_cwd(os.path.join(full, f), adapter)
-			if cwd:
+			fp = os.path.join(full, f)
+			for c in (session_cwd(fp, adapter), session_last_cwd(fp, adapter)):
+				if c and c not in candidates:
+					candidates.append(c)
+			if any(_slug(os.path.normpath(c)) == d for c in candidates):
 				break
+		matching = [c for c in candidates if _slug(os.path.normpath(c)) == d]
+		cwd = (matching or candidates or [None])[0]
 		if not cwd:
 			cwd = slug_lookup.get(d)
 		if not cwd and fallback_dirs:

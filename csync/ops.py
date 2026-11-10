@@ -172,7 +172,7 @@ def repo_size_mb(paths: Paths) -> float:
 	return Store(paths.repo_dir, None, "").size_mb()
 
 
-def do_move(paths: Paths, old: str, new: str, lock_timeout: float = 30.0) -> Dict[str, Any]:
+def do_move(paths: Paths, old: str, new: str, lock_timeout: float = 30.0, relink_only: bool = False) -> Dict[str, Any]:
 	"""Déplace un dossier de travail et ses conversations, puis l'annonce aux autres machines."""
 	from .move import move_folder
 
@@ -180,7 +180,7 @@ def do_move(paths: Paths, old: str, new: str, lock_timeout: float = 30.0) -> Dic
 		eng = engine(paths)
 		# D'abord à jour : rien de ce que l'autre machine a ajouté ne doit rester sous l'ancien chemin.
 		eng.sync()
-		result = move_folder(eng, old, new)
+		result = move_folder(eng, old, new, relink_only=relink_only)
 		eng.state.save(paths)
 		eng.refresh_profile(full=False)
 		report = eng.push()
