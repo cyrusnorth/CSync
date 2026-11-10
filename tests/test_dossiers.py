@@ -151,6 +151,10 @@ class ResumeAndMove(Harness):
 		self.assertTrue(os.path.exists(os.path.join(m.session_dir(new), "memory", "MEMORY.md")))
 		self.assertFalse(os.path.exists(m.session_dir(old)))
 
+		# L'autre machine annonce encore les conversations à l'ancienne place : l'ancien dossier ne
+		# doit pas être recréé ici pour autant.
+		m.pull()
+		self.assertFalse(os.path.exists(old), "ancien dossier recréé")
 		lx.sync()
 		lx_new = os.path.join(lx.home, "Claude", "Projects", "Nouveau")
 		self.assertTrue(os.path.exists(lx.session_path(lx_new, sid)), "conversation absente au nouvel emplacement")

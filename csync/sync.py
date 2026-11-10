@@ -1182,6 +1182,9 @@ class Engine:
 						  dry_run: bool) -> None:
 		"""Crée, s'il manque, le dossier de travail d'une conversation reçue, ainsi que le dernier dossier
 		où elle s'est poursuivie : sans lui, Claude Code ne la propose pas à la reprise."""
+		st = self.state.entries.get(key) or {}
+		if st.get("deleted_vh") is not None or st.get("missing_since") or (st.get("path") and not os.path.exists(st["path"])):
+			return   # supprimée ou déplacée ici (« csync move ») : pas de dossier pour l'ancienne place
 		if not os.path.isdir(cwd):
 			local = self._creatable_dir(tokcwd)
 			if local and local == os.path.normpath(cwd):
